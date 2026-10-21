@@ -124,6 +124,125 @@ def _signal_label(positive: int, total: int) -> str:
     return "แรงขายกระจายตัวกว้าง"
 
 
+# --- Risk-on signals: 6-point regime score from ETF price moves (price proxy) ---
+
+RISK_ON_PAIRS: list[dict[str, Any]] = [
+    {
+        "id": "small_caps_lead",
+        "label": "หุ้นเล็กนำตลาด",
+        "description": "หุ้นส่วนเล็ก (IWM) ให้ผลตอบแทนเหนือตลาดรวม (SPY)",
+        "formula": "return(IWM) - return(SPY)",
+        "positive_when": "gt",
+        "operands": ["IWM", "SPY"],
+    },
+    {
+        "id": "equal_weight_wins",
+        "label": "หุ้นถ่วงน้ำหนักเท่ากันชนะตลาดรวม",
+        "description": "S&P 500 ถ่วงน้ำหนักเท่ากัน (RSP) เหนือตลาดรวม (SPY)",
+        "formula": "return(RSP) - return(SPY)",
+        "positive_when": "gt",
+        "operands": ["RSP", "SPY"],
+    },
+    {
+        "id": "junk_beats_ig",
+        "label": "เครดิตเสี่ยงชนะเครดิตเกรดลงทุน",
+        "description": "พันธบัตรผลตอบแทนสูง (HYG) เหนือเกรดลงทุน (LQD)",
+        "formula": "return(HYG) - return(LQD)",
+        "positive_when": "gt",
+        "operands": ["HYG", "LQD"],
+    },
+    {
+        "id": "em_wins",
+        "label": "ตลาดเกิดใหม่ชนะตลาดรวม",
+        "description": "ตลาดเกิดใหม่ (EEM) ให้ผลตอบแทนเหนือตลาดรวมสหรัฐ (SPY)",
+        "formula": "return(EEM) - return(SPY)",
+        "positive_when": "gt",
+        "operands": ["EEM", "SPY"],
+    },
+    {
+        "id": "dollar_weak",
+        "label": "ดอลลาร์อ่อนค่า",
+        "description": "ดัชนีดอลลาร์สหรัฐ (UUP) ให้ผลตอบแทนติดลบ",
+        "formula": "return(UUP)",
+        "positive_when": "lt_zero",
+        "operands": ["UUP"],
+    },
+    {
+        "id": "gold_loses",
+        "label": "ทองคำแพ้ตลาดรวม",
+        "description": "ทองคำ (GLD) ให้ผลตอบแทนแย่กว่าตลาดรวม (SPY) — เงินไม่หนีเข้าทอง",
+        "formula": "return(GLD) - return(SPY)",
+        "positive_when": "lt",
+        "operands": ["GLD", "SPY"],
+    },
+]
+
+
+def _ret_for(history: dict[str, list[dict[str, Any]]], symbol: str, range_key: str) -> float | None:
+    """Same method and base point as the ETF rows on the Flows board."""
+    bars = history.get(symbol, [])
+    if len(bars) < 2:
+        return None
+    base_i = _base_index(bars, range_key)
+    if base_i is None:
+        return None
+    base = bars[base_i]["c"]
+    last = bars[-1]["c"]
+    if not base or last is None:
+        return None
+    return (last / base - 1) * 100
+
+
+def build_risk_signals(history: dict[str, list[dict[str, Any]]], range_key: str) -> dict[str, Any]:
+    signals: list[dict[str, Any]] = []
+    score = 0
+    for spec in RISK_ON_PAIRS:
+        rets: dict[str, float] = {}
+        for symbol in spec["operands"]:
+            value = _ret_for(history, symbol, range_key)
+            if value is None:
+                rets = {}
+                break
+            rets[symbol] = value
+        if not rets:
+            signals.append(
+                {
+                    "id": spec["id"],
+                    "label": spec["label"],
+                    "description": spec["description"],
+                    "formula": spec["formula"],
+                    "status": "unavailable",
+                    "values": None,
+                }
+            )
+            continue
+
+        if spec["positive_when"] == "gt":
+            diff = rets[spec["operands"][0]] - rets[spec["operands"][1]]
+            passed = diff > 0
+        elif spec["positive_when"] == "lt":
+            diff = rets[spec["operands"][0]] - rets[spec["operands"][1]]
+            passed = diff < 0
+        else:  # lt_zero
+            diff = rets[spec["operands"][0]]
+            passed = diff < 0
+
+        signals.append(
+            {
+                "id": spec["id"],
+                "label": spec["label"],
+                "description": spec["description"],
+                "formula": spec["formula"],
+                "status": "positive" if passed else "negative",
+                "values": {k: round(v, 2) for k, v in rets.items()},
+            }
+        )
+        if passed:
+            score += 1
+
+    return {"score": score, "of": 6, "signals": signals}
+
+
 async def get_flows(group: str, range_key: str, mode: str = "all") -> dict[str, Any]:
     cache = get_cache()
     group = group if group in VALID_GROUPS else "broad"
@@ -144,6 +263,7 @@ async def get_flows(group: str, range_key: str, mode: str = "all") -> dict[str, 
         provider = "cache"
 
     rows, summary = build_rows(history, group, range_key)
+    risk_on = build_risk_signals(history, range_key)
     max_abs = max((abs(r["pct"]) for r in rows), default=1) or 1
     for row in rows:
         row["flowScore"] = round(abs(row["pct"]) / max_abs * 100, 1)
@@ -166,6 +286,7 @@ async def get_flows(group: str, range_key: str, mode: str = "all") -> dict[str, 
             "description": description,
             "rows": rows,
             "summary": summary,
+            "riskOn": risk_on,
         },
         meta,
         provider,

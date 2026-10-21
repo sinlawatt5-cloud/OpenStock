@@ -67,6 +67,23 @@ export type FlowRow = {
   benchmark: boolean
 }
 
+export type RiskSignalStatus = 'positive' | 'negative' | 'unavailable'
+
+export type RiskSignal = {
+  id: string
+  label: string
+  description: string
+  formula: string
+  status: RiskSignalStatus
+  values: Record<string, number> | null
+}
+
+export type RiskOnSummary = {
+  score: number
+  of: number
+  signals: RiskSignal[]
+}
+
 export type FlowsResponse = Meta & {
   group: string
   range: string
@@ -80,6 +97,7 @@ export type FlowsResponse = Meta & {
     benchmarkPct: number | null
     label: string
   }
+  riskOn?: RiskOnSummary
 }
 
 export type NewsItem = {

@@ -53,10 +53,18 @@ test('flow filters update the URL and the board', async ({ page }) => {
 
   await page.getByRole('button', { name: 'ไหลออก', exact: true }).click()
   await expect(page).toHaveURL(/mode=outflow/)
-  await expect(page.locator('.flow-summary')).toContainText('แรงขาย', { timeout: 30_000 })
+  // Outflow mode must only keep negative rows, whatever the market does today.
+  const outflowPcts = await page.locator('.flow-pct').allTextContents()
+  for (const value of outflowPcts) {
+    expect(Number(value.replace('%', '').replace('+', ''))).toBeLessThan(0)
+  }
+  await expect(page.locator('.flow-summary')).toBeVisible({ timeout: 30_000 })
 
   await page.getByRole('button', { name: 'ภาพใหญ่', exact: true }).click()
   await expect(page).toHaveURL(/group=broad/)
+  // Back to the full board so the SPY benchmark row is always present.
+  await page.locator('.segmented').first().getByRole('button', { name: 'ทั้งหมด', exact: true }).click()
+  await expect(page).toHaveURL(/mode=all/)
   await expect(page.locator('.flow-row--bench')).toHaveCount(1)
 })
 
@@ -69,4 +77,24 @@ test('mobile keeps the brand and stacks the dashboard', async ({ page }) => {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('flows shows the risk-on panel with six signals for the broad view', async ({ page }) => {
+  const errors: string[] = []
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text())
+  })
+
+  await page.goto('/flows?group=broad&range=1w')
+  await expect(page.locator('.risk-panel')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.risk-signal')).toHaveCount(6, { timeout: 30_000 })
+  await expect(page.locator('.risk-score strong')).toHaveText(/^\d+\/6$/)
+  await expect(page.locator('.risk-note')).toContainText('ไม่ใช่ยอดเงินไหลเข้า/ออกกองทุนจริง')
+
+  // The panel must disappear for a non-broad group.
+  await page.goto('/flows?group=sectors&range=1w')
+  await expect(page.locator('.flow-row').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('.risk-panel')).toHaveCount(0)
+
+  expect(errors).toEqual([])
 })

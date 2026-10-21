@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { RiskOnPanel } from '../features/flows/RiskOnPanel'
 import { ErrorState, SkeletonBlock, StaleBadge } from '../components/States'
 import { apiGet } from '../lib/api'
 import { fmtPct, fmtThaiTime, fmtVolume } from '../lib/format'
@@ -58,6 +59,7 @@ export function FlowsPage() {
   })
 
   const summary = flows.data?.summary
+  const riskOn = flows.data?.riskOn
   const netPositive = (summary?.inflow ?? 0) >= (summary?.outflow ?? 0)
   const SummaryIcon = netPositive ? TrendingUp : TrendingDown
   const rows = flows.data?.rows ?? []
@@ -161,6 +163,8 @@ export function FlowsPage() {
           </div>
         </div>
       </section>
+
+      {riskOn && (group === 'broad' || group === 'all') ? <RiskOnPanel riskOn={riskOn} /> : null}
 
       <section className="card flow-panel" aria-label="อันดับกระแสเงินตามกลุ่ม">
         {flows.data ? <p className="flow-desc">{flows.data.description}</p> : null}

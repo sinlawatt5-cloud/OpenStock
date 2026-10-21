@@ -2,7 +2,9 @@
 
 > สรุปสำหรับส่งต่องาน ณ วันที่ 21 ตุลาคม 2026 จาก source, tests, เอกสารใน repository และประวัติการตัดสินใจที่มีอยู่ในบทสนทนา
 >
-> **ขอบเขตหลักฐาน:** Git history ที่ตรวจได้ใน checkout นี้มี baseline commit เดียว (`ee971eb`) จึงไม่มี commit ย่อยให้เรียงลำดับการพัฒนาทุกฟีเจอร์ย้อนหลัง เอกสารนี้แยกสิ่งที่ตรวจพบในแอปปัจจุบันออกจากข้อสรุป/แผนที่ยืนยันในบทสนทนา และไม่อ้างว่าแผน Flows ได้ถูก implement แล้ว
+> **อัปเดตล่าสุด:** ฟีเจอร์ Flows risk-on 6 สัญญาณ **implement เสร็จแล้ว** (backend + frontend + tests) — ดูหัวข้อ 8
+>
+> **ขอบเขตหลักฐาน:** Git history ที่ตรวจได้ใน checkout นี้มี baseline commit เดียว (`ee971eb`) จึงไม่มี commit ย่อยให้เรียงลำดับการพัฒนาทุกฟีเจอร์ย้อนหลัง เอกสารนี้แยกสิ่งที่ตรวจพบในแอปปัจจุบันออกจากข้อสรุป/แผนที่ยืนยันในบทสนทนา และไม่อ้างว่าแผน Flows ได้ถูก implement แล้ว (ดูหัวข้อ 8 สำหรับสถานะล่าสุด)
 
 ## 1. สรุปสำหรับผู้รับช่วง
 
@@ -128,3 +130,42 @@ OpenStock เป็นเว็บแดชบอร์ดภาษาไทย�
 - ห้ามแปลงข้อมูลที่ไม่ครบเป็นคะแนนผ่าน/ไม่ผ่านโดยไม่มีหลักฐาน
 - ไฟล์ secrets, ฐานข้อมูล local, logs, build artifacts และ `.freebuff/project-id` เป็นข้อมูล local/metadata ไม่ควรใส่ใน commit
 - รายงานนี้เป็น status/handoff ไม่ใช่ข้อกำหนดให้ deploy หรือเปลี่ยน provider
+
+## 8. สถานะล่าสุด: Flows risk-on 6 สัญญาณ (implement เสร็จแล้ว)
+
+ฟีเจอร์ตามหัวข้อ 4–5 **implement เสร็จครบทั้ง backend และ frontend** ในรอบงานล่าสุด (ยังไม่ได้ commit/push)
+
+### ไฟล์ที่เปลี่ยน
+
+| ไฟล์ | การเปลี่ยนแปลง |
+|---|---|
+| `backend/app/services/flows.py` | เพิ่ม `RISK_ON_PAIRS`, `_ret_for`, `build_risk_signals` และ field `riskOn` ใน response ของ `get_flows` |
+| `backend/tests/test_flows.py` | เพิ่ม 7 เคส: สูตรครบทั้ง 6 ข้อ, ผลตอบแทนเสมอกัน, ETF หาย, bars ไม่พอ, ใช้ range เดียวกับแถว Flows, รูปแบบ payload |
+| `frontend/src/lib/types.ts` | เพิ่ม `RiskSignal`, `RiskSignalStatus`, `RiskOnSummary` และ `riskOn?` ใน `FlowsResponse` |
+| `frontend/src/features/flows/RiskOnPanel.tsx` | component แผงใหม่ (คะแนน `n/6`, สถานะรายสัญญาณ, ข้อความ price-based proxy) |
+| `frontend/src/features/flows/RiskOnPanel.test.tsx` | component tests 5 เคส (jsdom + @testing-library/react) |
+| `frontend/src/pages/FlowsPage.tsx` | แสดงแผงเมื่อมุมมองเป็น `broad` หรือ `all` |
+| `frontend/src/styles/index.css` | สไตล์แผงใหม่ โดยใช้ CSS variables เดิม (`--up`, `--down`, `--up-soft`) ไม่เปลี่ยนธีม |
+| `frontend/e2e/smoke.spec.ts` | เพิ่มเคสตรวจแผงบนหน้า Flows + แก้เคสเดิมที่ผูกกับสภาวะตลาดจริง |
+| `frontend/vitest.config.ts`, `frontend/package.json` | รองรับไฟล์ test `.tsx` และเพิ่ม devDependencies (`jsdom`, `@testing-library/react`) |
+
+### ผลตรวจสอบที่รันจริงในรอบนี้
+
+- Backend: `uv run --locked --group dev pytest` — **34 passed** (27 เดิม + 7 ใหม่), 1 deprecation warning จาก Starlette/httpx TestClient
+- Frontend unit tests: `vitest run` — **13 passed** (8 เดิม + 5 ใหม่)
+- Frontend build: `vite build` — สำเร็จ; ยังมี advisory เรื่อง bundle > 500 kB เหมือนเดิม
+- Lint: `oxlint` — 3 warnings, 0 errors (ทั้งหมดอยู่ใน `DashboardPage.tsx` และ `SearchDialog.tsx` เดิม ไม่เกี่ยวกับฟีเจอร์นี้)
+- E2E: `playwright test` — **6 passed** (5 เดิม + 1 ใหม่) รวมถึงเคสตรวจแผง risk-on
+- ตรวจจริงกับข้อมูล live (Yahoo): หน้า Flows แสดงคะแนน `3/6` ตรงกับ API, ไม่มี console error, ไม่ล้นบน viewport มือถือ 390px
+- แผงแสดงเฉพาะมุมมอง `broad` และ `all`; ทุกช่วงเวลา (1d/1w/1mo/3mo/ytd) คำนวณคะแนนใหม่ตามช่วงที่เลือก
+
+### หมายเหตุด้านสภาพแวดล้อม
+
+- `pnpm install`/`pnpm add` ในเครื่องนี้ติด supply-chain policy `minimumReleaseAge` ของ pnpm เนื่องจาก `lucide-react@1.61.0` และ `vite@8.3.5` ใน lockfile ถูกปล่อยภายใน 24 ชั่วโมง ต้องใช้ `--config.minimumReleaseAge=0` เฉพาะตอนติดตั้งเท่านั้น (ไม่ได้แก้ config ถาวรของเครื่อง)
+- เนื่องจาก policy นี้ `pnpm run <script>` จะพยายามตรวจ dependency ใหม่และล้มเหลว ให้เรียก binary ใน `node_modules/.bin` โดยตรงแทน หรือรัน `pnpm install --config.minimumReleaseAge=0` ก่อน
+
+### ข้อควรระวัง
+
+- แผงนี้เป็นการประมาณภาวะ risk-on จาก **การเคลื่อนไหวของราคา ETF** ไม่ใช่การวัดกระแสเงินสดจริง และไม่ใช่คำแนะนำลงทุน
+- สัญญาณที่ข้อมูลไม่พร้อมจะแสดงเป็น “ข้อมูลไม่พร้อม” และ **ไม่ถูกนับเป็นผ่าน** รวมถึงไม่ถูกนับในคะแนน `n/6`
+- ยังไม่ได้ commit/push — ต้องได้รับอนุญาตจากผู้ใช้ก่อน
